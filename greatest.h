@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-/* 1.2.2 */
+/* 1.2.2 + SHUFFLE_TESTS */
 #define GREATEST_VERSION_MAJOR 1
 #define GREATEST_VERSION_MINOR 2
 #define GREATEST_VERSION_PATCH 2
@@ -141,6 +141,7 @@ int main(int argc, char **argv) {
 #define GREATEST_FLOAT_FMT "%g"
 #endif
 
+
 /*********
  * Types *
  *********/
@@ -162,12 +163,12 @@ typedef struct greatest_suite_info {
 } greatest_suite_info;
 
 /* Type for a suite function. */
-typedef void (greatest_suite_cb)(void);
+typedef void greatest_suite_cb(void);
 
 /* Types for setup/teardown callbacks. If non-NULL, these will be run
  * and passed the pointer to their additional data. */
-typedef void (greatest_setup_cb)(void *udata);
-typedef void (greatest_teardown_cb)(void *udata);
+typedef void greatest_setup_cb(void *udata);
+typedef void greatest_teardown_cb(void *udata);
 
 /* Type for an equality comparison between two pointers of the same type.
  * Should return non-0 if equal, otherwise 0.
@@ -200,6 +201,18 @@ typedef enum {
     GREATEST_FLAG_FIRST_FAIL = 0x01,
     GREATEST_FLAG_LIST_ONLY = 0x02
 } greatest_flag_t;
+
+/* Internal state for a PRNG, used to shuffle test order. */
+struct greatest_prng {
+    unsigned char random_order; /* use random ordering? */
+    unsigned char initialized;  /* is random ordering initialized? */
+    unsigned char pad_0[2];
+    long state;                 /* PRNG state */
+    long count;                 /* how many tests, this pass */
+    long count_ceil;            /* total number of tests */
+    long count_run;             /* total tests run */
+    long mod;                   /* power-of-2 ceiling of count_ceil */
+};
 
 /* Struct containing all test runner state. */
 typedef struct greatest_run_info {
@@ -237,6 +250,8 @@ typedef struct greatest_run_info {
     /* only run a specific suite or test */
     const char *suite_filter;
     const char *test_filter;
+
+    struct greatest_prng prng;
 
 #if GREATEST_USE_TIME
     /* overall timers */
@@ -277,7 +292,9 @@ int greatest_pre_test(const char *name);
 void greatest_post_test(const char *name, int res);
 void greatest_usage(const char *name);
 int greatest_do_assert_equal_t(const void *exp, const void *got,
-    greatest_type_info *type_info, void *udata);
+greatest_type_info *type_info, void *udata);
+void greatest_prng_init(long seed);
+void greatest_prng_step(void);
 
 /* These are part of the public greatest API. */
 void GREATEST_SET_SETUP_CB(greatest_setup_cb *cb, void *udata);
@@ -603,6 +620,41 @@ typedef enum greatest_test_res {
     GREATEST_TEST_RES_PASS
 #endif
 
+/* Run every test function run within BODY in pseudo-random
+ * order, seeded by SEED.
+ *
+ * This should be called like:
+ *     GREATEST_SHUFFLE_TESTS(seed, {
+ *         GREATEST_RUN_TEST(some_test);
+ *         GREATEST_RUN_TEST(some_other_test);
+ *         GREATEST_RUN_TEST(yet_another_test);
+ *     });
+ *
+ * Note that the body of the second argument will be evaluated
+ * multiple times. */
+#define GREATEST_SHUFFLE_TESTS(SEED, BODY)                              \
+    do {                                                                \
+        greatest_prng_init((SEED));                                     \
+        do {                                                            \
+            struct greatest_prng *prng = &greatest_info.prng;           \
+            greatest_info.prng.count = 0;                               \
+            if (prng->initialized) {                                    \
+                greatest_prng_step();                                   \
+            }                                                           \
+            BODY;                                                       \
+            if (!prng->initialized) {                                   \
+                prng->mod = 1;                                          \
+                prng->count_ceil = prng->count;                         \
+                while (prng->mod < prng->count) { prng->mod <<= 2; }    \
+                prng->initialized = 1;                                  \
+            } else if (prng->count_run == prng->count_ceil) {           \
+                break;                                                  \
+            }                                                           \
+        } while(1);                                                     \
+        greatest_info.prng.random_order = 0;                            \
+    } while(0)
+
+
 /* Include several function definitions in the main test file. */
 #define GREATEST_MAIN_DEFS()                                            \
                                                                         \
@@ -623,15 +675,29 @@ static int greatest_name_match(const char *name,                        \
     return 0;                                                           \
 }                                                                       \
                                                                         \
+/* Before running a test, check the name filtering and                  \
+ * test shuffling state, if applicable, and then call setup hooks. */   \
 int greatest_pre_test(const char *name) {                               \
     if (!GREATEST_LIST_ONLY()                                           \
         && (!GREATEST_FIRST_FAIL() || greatest_info.suite.failed == 0)  \
         && (greatest_info.test_filter == NULL ||                        \
             greatest_name_match(name, greatest_info.test_filter))) {    \
+        struct greatest_prng *prng = &greatest_info.prng;               \
+        if (prng->random_order) {                                       \
+            if (!prng->initialized) {                                   \
+                prng->count++;                                          \
+                return 0; /* just count tests */                        \
+            } else if (prng->count != prng->state) {                    \
+                prng->count++;                                          \
+                return 0; /* not the next one to run */                 \
+            }                                                           \
+            prng->count++;                                              \
+        }                                                               \
         GREATEST_SET_TIME(greatest_info.suite.pre_test);                \
         if (greatest_info.setup) {                                      \
             greatest_info.setup(greatest_info.setup_udata);             \
         }                                                               \
+        greatest_info.prng.count_run++;                                 \
         return 1;               /* test should be run */                \
     } else {                                                            \
         return 0;               /* skipped */                           \
@@ -892,6 +958,7 @@ static int greatest_memory_equal_cb(const void *exp, const void *got,   \
     return (0 == memcmp(exp, got, env->size));                          \
 }                                                                       \
                                                                         \
+/* Hexdump raw memory, with differences highlighted */                  \
 static int greatest_memory_printf_cb(const void *t, void *udata) {      \
     greatest_memory_cmp_env *env = (greatest_memory_cmp_env *)udata;    \
     const unsigned char *buf = (const unsigned char *)t;                \
@@ -924,6 +991,28 @@ static int greatest_memory_printf_cb(const void *t, void *udata) {      \
     return len;                                                         \
 }                                                                       \
                                                                         \
+/* Step the pseudorandom number generator until its state reaches       \
+ * another test ID between 0 and the test count.                        \
+ * This use a linear congruential pseudorandom number generator,        \
+ * with the power-of-two ceiling of the test count as the modulus       \
+ * and two twin primes as the multiplier and increment.                 \
+ * This will visit all IDs 0 <= X < mod once before repeating,          \
+ * with a starting position chosen based on the initial seed.           \
+ * For details, see: Knuth, The Art of Computer Programming             \
+ * Volume. 2, section 3.2.1. */                                         \
+void greatest_prng_step(void) {                                         \
+    struct greatest_prng *p = &greatest_info.prng;                      \
+    do {                                                                \
+        p->state = ((15485537 * p->state) + 15485539) % p->mod;         \
+    } while (p->state >= p->count_ceil);                                \
+}                                                                       \
+                                                                        \
+void greatest_prng_init(long seed) {                                    \
+    greatest_info.prng.random_order = 1;                                \
+    greatest_info.prng.state = seed;                                    \
+    greatest_info.prng.count_run = 0;                                   \
+}                                                                       \
+                                                                        \
 greatest_type_info greatest_type_info_memory = {                        \
     greatest_memory_equal_cb,                                           \
     greatest_memory_printf_cb,                                          \
@@ -937,6 +1026,8 @@ greatest_run_info greatest_info
         /* Suppress unused function warning if features aren't used */  \
         (void)greatest_run_suite;                                       \
         (void)greatest_parse_args;                                      \
+        (void)greatest_prng_step;                                       \
+        (void)greatest_prng_init;                                       \
                                                                         \
         memset(&greatest_info, 0, sizeof(greatest_info));               \
         greatest_info.width = GREATEST_DEFAULT_WIDTH;                   \
@@ -1019,6 +1110,7 @@ greatest_run_info greatest_info
 #define SET_SETUP      GREATEST_SET_SETUP_CB
 #define SET_TEARDOWN   GREATEST_SET_TEARDOWN_CB
 #define CHECK_CALL     GREATEST_CHECK_CALL
+#define SHUFFLE_TESTS  GREATEST_SHUFFLE_TESTS
 
 #ifdef GREATEST_VA_ARGS
 #define RUN_TESTp      GREATEST_RUN_TESTp
