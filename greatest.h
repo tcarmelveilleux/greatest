@@ -1002,7 +1002,7 @@ int greatest_prng_init_second_pass(unsigned int seed) {                 \
     prng->mod = 1;                                                      \
     prng->count_ceil = prng->count;                                     \
     while (prng->mod < prng->count) { prng->mod <<= 2; }                \
-    prng->state = seed & ((1LLU << 29) - 1); /* mask 3 top bits */      \
+    prng->state = seed & ((1LU << 29) - 1);  /* mask 3 top bits... */   \
     prng->a = (4LU * prng->state) + 1;       /* to avoid overflow */    \
     prng->c = 2147483647 /* large prime, (2**32 - 1) */;                \
     prng->initialized = 1;                                              \
