@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 #include <sys/time.h>
 #include <err.h>
@@ -23,9 +24,14 @@ static void set_run(unsigned int id) {
     test_has_run[offset] |= bit;
 }
 
+static void reset_run(void) {
+    memset(test_has_run, 0x00, sizeof(test_has_run));
+}
+
+static int print_flag = 0;
 
 TEST print_and_pass(unsigned int id) {
-    if (0) {
+    if (print_flag) {
         printf("running test %u\n", id);
     }
     if (check_run(id)) {
@@ -37,17 +43,49 @@ TEST print_and_pass(unsigned int id) {
     PASS();
 }
 
-SUITE(suite) {
+static unsigned int seed_of_time(void) {
+    static unsigned int counter = 1;
     struct timeval tv;
-    unsigned int seed;
-    const size_t limit = TEST_COUNT;
-    unsigned int i = 0;
     if (0 != gettimeofday(&tv, NULL)) {
         err(1, "gettimeofday");
     }
-    seed = ~(tv.tv_sec ^ tv.tv_usec);
+    return ~(tv.tv_sec ^ tv.tv_usec) * counter++;
+}
 
-    SHUFFLE_TESTS(seed, {
+SUITE(suite) {
+    const size_t limit = TEST_COUNT;
+    size_t count;
+    const size_t small_test_count = 10;
+    unsigned int i = 0;
+
+    /* Check that all are run exactly once, for a small number of tests */
+    print_flag = 1;
+    for (count = 0; count < small_test_count; count++) {
+        fprintf(stderr, "count %ld\n", count);
+        SHUFFLE_TESTS(seed_of_time(), {
+            if (count > 0) { RUN_TEST1(print_and_pass, 0); }
+            if (count > 1) { RUN_TEST1(print_and_pass, 1); }
+            if (count > 2) { RUN_TEST1(print_and_pass, 2); }
+            if (count > 3) { RUN_TEST1(print_and_pass, 3); }
+            if (count > 4) { RUN_TEST1(print_and_pass, 4); }
+            if (count > 5) { RUN_TEST1(print_and_pass, 5); }
+            if (count > 6) { RUN_TEST1(print_and_pass, 6); }
+            if (count > 7) { RUN_TEST1(print_and_pass, 7); }
+            if (count > 8) { RUN_TEST1(print_and_pass, 8); }
+        });
+
+        for (i = 0; i < count; i++) {
+            if (!check_run(i)) {
+                fprintf(stderr, "Error: Test %u got lost in the shuffle!\n", i);
+                assert(0);
+            }
+        }
+        reset_run();
+    }
+    print_flag = 0;
+
+    /* Check that all are run exactly once, for a larger amount of tests */
+    SHUFFLE_TESTS(seed_of_time(), {
         for (i = 0; i < limit; i++) {
             RUN_TEST1(print_and_pass, i);
         }

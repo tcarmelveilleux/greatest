@@ -637,21 +637,21 @@ typedef enum greatest_test_res {
  * multiple times. */
 #define GREATEST_SHUFFLE_TESTS(SEED, BODY)                              \
     do {                                                                \
+        struct greatest_prng *prng = &greatest_info.prng;               \
         greatest_prng_init_first_pass();                                \
         do {                                                            \
-            struct greatest_prng *prng = &greatest_info.prng;           \
             greatest_info.prng.count = 0;                               \
             if (prng->initialized) {                                    \
                 greatest_prng_step();                                   \
             }                                                           \
             BODY;                                                       \
             if (!prng->initialized) {                                   \
-                if (!greatest_prng_init_second_pass(SEED)) { return; }  \
+                if (!greatest_prng_init_second_pass(SEED)) { break; }   \
             } else if (prng->count_run == prng->count_ceil) {           \
                 break;                                                  \
             }                                                           \
         } while(1);                                                     \
-        greatest_info.prng.random_order = 0;                            \
+        prng->count_run = prng->random_order = prng->initialized = 0;   \
     } while(0)
 
 
