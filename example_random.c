@@ -39,13 +39,13 @@ TEST print_and_pass(unsigned int id) {
 
 SUITE(suite) {
     struct timeval tv;
-    long seed;
+    unsigned int seed;
     const size_t limit = TEST_COUNT;
     unsigned int i = 0;
     if (0 != gettimeofday(&tv, NULL)) {
         err(1, "gettimeofday");
     }
-    seed = tv.tv_sec ^ tv.tv_usec;
+    seed = ~(tv.tv_sec ^ tv.tv_usec);
 
     SHUFFLE_TESTS(seed, {
         for (i = 0; i < limit; i++) {

@@ -207,11 +207,13 @@ struct greatest_prng {
     unsigned char random_order; /* use random ordering? */
     unsigned char initialized;  /* is random ordering initialized? */
     unsigned char pad_0[2];
-    long state;                 /* PRNG state */
-    long count;                 /* how many tests, this pass */
-    long count_ceil;            /* total number of tests */
-    long count_run;             /* total tests run */
-    long mod;                   /* power-of-2 ceiling of count_ceil */
+    unsigned int state;         /* PRNG state */
+    unsigned int count;         /* how many tests, this pass */
+    unsigned int count_ceil;    /* total number of tests */
+    unsigned int count_run;     /* total tests run */
+    unsigned int mod;           /* power-of-2 ceiling of count_ceil */
+    unsigned int a;             /* LCG multiplier */
+    unsigned int c;             /* LCG increment */
 };
 
 /* Struct containing all test runner state. */
@@ -293,7 +295,8 @@ void greatest_post_test(const char *name, int res);
 void greatest_usage(const char *name);
 int greatest_do_assert_equal_t(const void *exp, const void *got,
 greatest_type_info *type_info, void *udata);
-void greatest_prng_init(long seed);
+void greatest_prng_init_first_pass(void);
+int greatest_prng_init_second_pass(unsigned int seed);
 void greatest_prng_step(void);
 
 /* These are part of the public greatest API. */
@@ -621,7 +624,7 @@ typedef enum greatest_test_res {
 #endif
 
 /* Run every test function run within BODY in pseudo-random
- * order, seeded by SEED.
+ * order, seeded by SEED. (The top 3 bits of the seed are ignored.)
  *
  * This should be called like:
  *     GREATEST_SHUFFLE_TESTS(seed, {
@@ -634,7 +637,7 @@ typedef enum greatest_test_res {
  * multiple times. */
 #define GREATEST_SHUFFLE_TESTS(SEED, BODY)                              \
     do {                                                                \
-        greatest_prng_init((SEED));                                     \
+        greatest_prng_init_first_pass();                                \
         do {                                                            \
             struct greatest_prng *prng = &greatest_info.prng;           \
             greatest_info.prng.count = 0;                               \
@@ -643,10 +646,7 @@ typedef enum greatest_test_res {
             }                                                           \
             BODY;                                                       \
             if (!prng->initialized) {                                   \
-                prng->mod = 1;                                          \
-                prng->count_ceil = prng->count;                         \
-                while (prng->mod < prng->count) { prng->mod <<= 2; }    \
-                prng->initialized = 1;                                  \
+                if (!greatest_prng_init_second_pass(SEED)) { return; }  \
             } else if (prng->count_run == prng->count_ceil) {           \
                 break;                                                  \
             }                                                           \
@@ -991,6 +991,24 @@ static int greatest_memory_printf_cb(const void *t, void *udata) {      \
     return len;                                                         \
 }                                                                       \
                                                                         \
+void greatest_prng_init_first_pass(void) {                              \
+    greatest_info.prng.random_order = 1;                                \
+    greatest_info.prng.count_run = 0;                                   \
+}                                                                       \
+                                                                        \
+int greatest_prng_init_second_pass(unsigned int seed) {                 \
+    struct greatest_prng *prng = &greatest_info.prng;                   \
+    if (prng->count == 0) { return 0; }                                 \
+    prng->mod = 1;                                                      \
+    prng->count_ceil = prng->count;                                     \
+    while (prng->mod < prng->count) { prng->mod <<= 2; }                \
+    prng->state = seed & ((1LLU << 29) - 1); /* mask 3 top bits */      \
+    prng->a = (4LU * prng->state) + 1;       /* to avoid overflow */    \
+    prng->c = 2147483647 /* large prime, (2**32 - 1) */;                \
+    prng->initialized = 1;                                              \
+    return 1;                                                           \
+}                                                                       \
+                                                                        \
 /* Step the pseudorandom number generator until its state reaches       \
  * another test ID between 0 and the test count.                        \
  * This use a linear congruential pseudorandom number generator,        \
@@ -1003,14 +1021,8 @@ static int greatest_memory_printf_cb(const void *t, void *udata) {      \
 void greatest_prng_step(void) {                                         \
     struct greatest_prng *p = &greatest_info.prng;                      \
     do {                                                                \
-        p->state = ((15485537 * p->state) + 15485539) % p->mod;         \
+        p->state = ((p->a * p->state) + p->c) % p->mod;                 \
     } while (p->state >= p->count_ceil);                                \
-}                                                                       \
-                                                                        \
-void greatest_prng_init(long seed) {                                    \
-    greatest_info.prng.random_order = 1;                                \
-    greatest_info.prng.state = seed;                                    \
-    greatest_info.prng.count_run = 0;                                   \
 }                                                                       \
                                                                         \
 greatest_type_info greatest_type_info_memory = {                        \
@@ -1027,7 +1039,8 @@ greatest_run_info greatest_info
         (void)greatest_run_suite;                                       \
         (void)greatest_parse_args;                                      \
         (void)greatest_prng_step;                                       \
-        (void)greatest_prng_init;                                       \
+        (void)greatest_prng_init_first_pass;                            \
+        (void)greatest_prng_init_second_pass;                           \
                                                                         \
         memset(&greatest_info, 0, sizeof(greatest_info));               \
         greatest_info.width = GREATEST_DEFAULT_WIDTH;                   \
