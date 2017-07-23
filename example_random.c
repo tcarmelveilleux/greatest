@@ -61,8 +61,9 @@ SUITE(suite) {
     /* Check that all are run exactly once, for a small number of tests */
     print_flag = 1;
     for (count = 0; count < small_test_count; count++) {
-        fprintf(stderr, "count %u\n", count);
-        SHUFFLE_TESTS(seed_of_time(), {
+        unsigned int seed = seed_of_time();
+        fprintf(stderr, "count %u, seed %u\n", count, seed);
+        SHUFFLE_TESTS(seed, {
             if (count > 0) { RUN_TEST1(print_and_pass, 0); }
             if (count > 1) { RUN_TEST1(print_and_pass, 1); }
             if (count > 2) { RUN_TEST1(print_and_pass, 2); }
