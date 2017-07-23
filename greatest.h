@@ -1004,7 +1004,10 @@ int greatest_prng_init_second_pass(unsigned int seed) {                 \
     while (prng->mod < prng->count) { prng->mod <<= 1; }                \
     prng->state = seed & ((1LU << 29) - 1);  /* mask 3 top bits... */   \
     prng->a = (4LU * prng->state) + 1;       /* to avoid overflow */    \
-    prng->c = 2147483647 /* large prime, (2**32 - 1) */;                \
+    static unsigned int primes[] = { 11, 101, 1009, 10007,              \
+        100003, 1000003, 10000019, 100000007, 1000000007,               \
+        1538461, 1865471, 17471, 2147483647 /* 2**32 - 1 */, };         \
+    prng->c = primes[(seed * 16451) % sizeof(primes)/sizeof(primes[0])];\
     prng->initialized = 1;                                              \
     return 1;                                                           \
 }                                                                       \
