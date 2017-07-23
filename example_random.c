@@ -53,15 +53,15 @@ static unsigned int seed_of_time(void) {
 }
 
 SUITE(suite) {
-    const size_t limit = TEST_COUNT;
-    size_t count;
-    const size_t small_test_count = 10;
+    const unsigned int limit = TEST_COUNT;
+    unsigned int count;
+    const unsigned int small_test_count = 10;
     unsigned int i = 0;
 
     /* Check that all are run exactly once, for a small number of tests */
     print_flag = 1;
     for (count = 0; count < small_test_count; count++) {
-        fprintf(stderr, "count %ld\n", count);
+        fprintf(stderr, "count %u\n", count);
         SHUFFLE_TESTS(seed_of_time(), {
             if (count > 0) { RUN_TEST1(print_and_pass, 0); }
             if (count > 1) { RUN_TEST1(print_and_pass, 1); }
