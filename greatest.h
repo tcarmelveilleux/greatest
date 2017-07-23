@@ -641,9 +641,7 @@ typedef enum greatest_test_res {
         greatest_prng_init_first_pass();                                \
         do {                                                            \
             greatest_info.prng.count = 0;                               \
-            if (prng->initialized) {                                    \
-                greatest_prng_step();                                   \
-            }                                                           \
+            if (prng->initialized) { greatest_prng_step(); }            \
             BODY;                                                       \
             if (!prng->initialized) {                                   \
                 if (!greatest_prng_init_second_pass(SEED)) { break; }   \
@@ -682,16 +680,12 @@ int greatest_pre_test(const char *name) {                               \
         && (!GREATEST_FIRST_FAIL() || greatest_info.suite.failed == 0)  \
         && (greatest_info.test_filter == NULL ||                        \
             greatest_name_match(name, greatest_info.test_filter))) {    \
-        struct greatest_prng *prng = &greatest_info.prng;               \
-        if (prng->random_order) {                                       \
-            if (!prng->initialized) {                                   \
-                prng->count++;                                          \
-                return 0; /* just count tests */                        \
-            } else if (prng->count != prng->state) {                    \
-                prng->count++;                                          \
-                return 0; /* not the next one to run */                 \
+        struct greatest_prng *p = &greatest_info.prng;                  \
+        if (p->random_order) {                                          \
+            p->count++;                                                 \
+            if (!p->initialized || ((p->count - 1) != p->state)) {      \
+                return 0; /* don't run this test yet */                 \
             }                                                           \
-            prng->count++;                                              \
         }                                                               \
         GREATEST_SET_TIME(greatest_info.suite.pre_test);                \
         if (greatest_info.setup) {                                      \
