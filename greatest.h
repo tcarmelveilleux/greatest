@@ -1021,7 +1021,7 @@ int greatest_prng_init_second_pass(unsigned int seed) {                 \
 void greatest_prng_step(void) {                                         \
     struct greatest_prng *p = &greatest_info.prng;                      \
     do {                                                                \
-        p->state = ((p->a * p->state) + p->c) % p->mod;                 \
+        p->state = ((p->a * p->state) + p->c) & (p->mod - 1);           \
     } while (p->state >= p->count_ceil);                                \
 }                                                                       \
                                                                         \
