@@ -11,6 +11,10 @@ seeded by SEED.
 If `GREATEST_NO_EXTERN_CPLUSPLUS` is `#define`d, then the C++
 `extern "C" { ... }` namespacing around greatest is disabled.
 
+All calls to `fprintf` have been wrapped in a macro, `GREATEST_FPRINTF`,
+which can be `#define`d to substitute another function with the same
+interface.
+
 
 ### Other Improvements
 
